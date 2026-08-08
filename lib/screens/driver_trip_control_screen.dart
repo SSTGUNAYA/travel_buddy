@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../data/bus_routes.dart';
 
 class DriverTripControlScreen extends StatefulWidget {
   const DriverTripControlScreen({super.key});
@@ -9,10 +10,47 @@ class DriverTripControlScreen extends StatefulWidget {
 }
 
 class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
+  // Currently selected route
+  BusRoute selectedRoute = busRoutes.first;
+
+  // From / To
+  late String fromLocation;
+  late String toLocation;
+
   DateTime selectedDate = DateTime.now();
+
   TimeOfDay selectedTime = const TimeOfDay(hour: 6, minute: 30);
 
   String tripStatus = 'Scheduled';
+
+  @override
+  void initState() {
+    super.initState();
+
+    fromLocation = selectedRoute.from;
+    toLocation = selectedRoute.to;
+  }
+
+  // Change route
+  void _changeRoute(BusRoute? route) {
+    if (route == null) return;
+
+    setState(() {
+      selectedRoute = route;
+      fromLocation = route.from;
+      toLocation = route.to;
+      tripStatus = 'Scheduled';
+    });
+  }
+
+  // Switch From and To
+  void _switchRoute() {
+    setState(() {
+      final temp = fromLocation;
+      fromLocation = toLocation;
+      toLocation = temp;
+    });
+  }
 
   Future<void> _selectDate() async {
     final DateTime? pickedDate = await showDatePicker(
@@ -49,7 +87,7 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Departure time saved successfully')),
+      const SnackBar(content: Text('Trip schedule saved successfully')),
     );
   }
 
@@ -88,35 +126,164 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
       ),
+
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
+
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+
           children: [
             // BUS INFORMATION
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
+
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    Text(
+
+                  children: [
+                    const Text(
                       'Bus Information',
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    SizedBox(height: 12),
-                    Text('Bus Number: NB-1234', style: TextStyle(fontSize: 16)),
-                    SizedBox(height: 6),
-                    Text(
-                      'Route: Colombo → Kandy',
+
+                    const SizedBox(height: 12),
+
+                    const Text(
+                      'Bus Number: NB-1234',
                       style: TextStyle(fontSize: 16),
+                    ),
+
+                    const SizedBox(height: 6),
+
+                    Text(
+                      'Route No: ${selectedRoute.routeNo}',
+                      style: const TextStyle(fontSize: 16),
                     ),
                   ],
                 ),
               ),
+            ),
+
+            const SizedBox(height: 20),
+
+            // SELECT ROUTE
+            const Text(
+              'Select Route',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+
+            const SizedBox(height: 8),
+
+            DropdownButtonFormField<BusRoute>(
+              initialValue: selectedRoute,
+
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.route),
+              ),
+
+              items: busRoutes
+                  .map(
+                    (route) => DropdownMenuItem<BusRoute>(
+                      value: route,
+                      child: Text(
+                        '${route.routeNo} - '
+                        '${route.from} → '
+                        '${route.to}',
+                      ),
+                    ),
+                  )
+                  .toList(),
+
+              onChanged: _changeRoute,
+            ),
+
+            const SizedBox(height: 20),
+
+            // FROM
+            const Text(
+              'From',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+
+            const SizedBox(height: 8),
+
+            DropdownButtonFormField<String>(
+              initialValue: fromLocation,
+
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.trip_origin),
+              ),
+
+              items: selectedRoute.stops
+                  .map(
+                    (stop) => DropdownMenuItem<String>(
+                      value: stop,
+                      child: Text(stop),
+                    ),
+                  )
+                  .toList(),
+
+              onChanged: (value) {
+                if (value == null) return;
+
+                setState(() {
+                  fromLocation = value;
+                });
+              },
+            ),
+
+            const SizedBox(height: 10),
+
+            // SWITCH BUTTON
+            Center(
+              child: IconButton(
+                onPressed: tripStatus == 'Live' ? null : _switchRoute,
+
+                icon: const Icon(Icons.swap_vert, size: 35),
+
+                tooltip: 'Switch From and To',
+              ),
+            ),
+
+            // TO
+            const Text(
+              'To',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+
+            const SizedBox(height: 8),
+
+            DropdownButtonFormField<String>(
+              initialValue: toLocation,
+
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.location_on),
+              ),
+
+              items: selectedRoute.stops
+                  .map(
+                    (stop) => DropdownMenuItem<String>(
+                      value: stop,
+                      child: Text(stop),
+                    ),
+                  )
+                  .toList(),
+
+              onChanged: (value) {
+                if (value == null) return;
+
+                setState(() {
+                  toLocation = value;
+                });
+              },
             ),
 
             const SizedBox(height: 20),
@@ -131,9 +298,12 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
 
             SizedBox(
               width: double.infinity,
+
               child: OutlinedButton.icon(
                 onPressed: _selectDate,
+
                 icon: const Icon(Icons.calendar_month),
+
                 label: Text(_formatDate(selectedDate)),
               ),
             ),
@@ -150,10 +320,50 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
 
             SizedBox(
               width: double.infinity,
+
               child: OutlinedButton.icon(
                 onPressed: _selectTime,
+
                 icon: const Icon(Icons.access_time),
+
                 label: Text(selectedTime.format(context)),
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            // TRIP SUMMARY
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+
+                  children: [
+                    const Text(
+                      'Trip Summary',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    Text(
+                      '$fromLocation → $toLocation',
+                      style: const TextStyle(fontSize: 18),
+                    ),
+
+                    const SizedBox(height: 6),
+
+                    Text(
+                      'Estimated time: '
+                      '${selectedRoute.estimatedTime}',
+                    ),
+                  ],
+                ),
               ),
             ),
 
@@ -168,16 +378,19 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
                       : tripStatus == 'Completed'
                       ? Icons.check_circle
                       : Icons.schedule,
+
                   color: tripStatus == 'Live'
                       ? Colors.green
                       : tripStatus == 'Completed'
                       ? Colors.grey
                       : Colors.orange,
                 ),
+
                 title: const Text(
                   'Trip Status',
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
+
                 subtitle: Text(tripStatus),
               ),
             ),
@@ -188,11 +401,14 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
             SizedBox(
               width: double.infinity,
               height: 50,
+
               child: ElevatedButton.icon(
                 onPressed: tripStatus == 'Live' ? null : _saveSchedule,
+
                 icon: const Icon(Icons.save),
+
                 label: const Text(
-                  'SAVE / UPDATE TIME',
+                  'SAVE / UPDATE TRIP',
                   style: TextStyle(fontSize: 16),
                 ),
               ),
@@ -204,9 +420,12 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
             SizedBox(
               width: double.infinity,
               height: 55,
+
               child: ElevatedButton.icon(
                 onPressed: tripStatus == 'Scheduled' ? _startTrip : null,
+
                 icon: const Icon(Icons.play_arrow),
+
                 label: const Text(
                   'START TRIP',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -216,30 +435,37 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
 
             const SizedBox(height: 15),
 
-            // COMPLETE TRIP
+            // COMPLETE
             SizedBox(
               width: double.infinity,
               height: 50,
+
               child: OutlinedButton.icon(
                 onPressed: tripStatus == 'Live' ? _completeTrip : null,
+
                 icon: const Icon(Icons.stop),
+
                 label: const Text('COMPLETE TRIP'),
               ),
             ),
 
             const SizedBox(height: 25),
 
-            // LIVE LOCATION INFO
+            // LIVE LOCATION
             if (tripStatus == 'Live')
               Card(
                 child: ListTile(
                   leading: const Icon(Icons.gps_fixed, color: Colors.green),
+
                   title: const Text(
                     'Live Location',
                     style: TextStyle(fontWeight: FontWeight.bold),
                   ),
+
                   subtitle: const Text(
-                    'Location tracking is ready to be connected.',
+                    'Location tracking '
+                    'will be connected '
+                    'in the next step.',
                   ),
                 ),
               ),
