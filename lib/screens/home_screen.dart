@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'owner_registration_screen.dart';
+import 'driver_trip_control_screen.dart';
 import 'search_screen.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -67,6 +68,21 @@ class HomeScreen extends StatelessWidget {
               onPressed: () {},
               icon: const Icon(Icons.favorite),
               label: const Text("Favorite Routes"),
+            ),
+
+            const SizedBox(height: 15),
+
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const DriverTripControlScreen(),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.directions_bus),
+              label: const Text('Driver Trip Control'),
             ),
 
             const SizedBox(height: 15),
