@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../data/bus_routes.dart';
+import '../data/trips.dart';
+import '../data/trip_manager.dart';
 
 class DriverTripControlScreen extends StatefulWidget {
   const DriverTripControlScreen({super.key});
@@ -22,6 +24,8 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
   TimeOfDay selectedTime = const TimeOfDay(hour: 6, minute: 30);
 
   String tripStatus = 'Scheduled';
+
+  BusTrip? currentTrip;
 
   @override
   void initState() {
@@ -100,6 +104,20 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
 
   void _saveSchedule() {
     setState(() {
+      currentTrip = BusTrip(
+        tripId: DateTime.now().millisecondsSinceEpoch.toString(),
+        routeNo: selectedRoute.routeNo,
+        busNumber: 'NB-1234',
+        from: fromLocation,
+        to: toLocation,
+        stops: getTripStops(),
+        departureDate: selectedDate,
+        departureTime: selectedTime.format(context),
+        status: 'Scheduled',
+      );
+
+      TripManager.addTrip(currentTrip!);
+
       tripStatus = 'Scheduled';
     });
 
@@ -109,7 +127,15 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
   }
 
   void _startTrip() {
+    if (currentTrip == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please save the trip schedule first.')),
+      );
+      return;
+    }
+
     setState(() {
+      currentTrip!.status = 'Live';
       tripStatus = 'Live';
     });
 

@@ -1,5 +1,6 @@
 class BusTrip {
   final String routeNo;
+  final String tripId;
   final String busNumber;
   final String from;
   final String to;
@@ -9,6 +10,7 @@ class BusTrip {
   String status;
 
   BusTrip({
+    required this.tripId,
     required this.routeNo,
     required this.busNumber,
     required this.from,
