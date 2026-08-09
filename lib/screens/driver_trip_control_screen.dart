@@ -52,6 +52,23 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
     });
   }
 
+  List<String> getTripStops() {
+    final stops = selectedRoute.stops;
+
+    final fromIndex = stops.indexOf(fromLocation);
+    final toIndex = stops.indexOf(toLocation);
+
+    if (fromIndex == -1 || toIndex == -1) {
+      return [];
+    }
+
+    if (fromIndex <= toIndex) {
+      return stops.sublist(fromIndex, toIndex + 1);
+    }
+
+    return stops.sublist(toIndex, fromIndex + 1).reversed.toList();
+  }
+
   Future<void> _selectDate() async {
     final DateTime? pickedDate = await showDatePicker(
       context: context,
@@ -354,6 +371,20 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
                     Text(
                       '$fromLocation → $toLocation',
                       style: const TextStyle(fontSize: 18),
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    const Text(
+                      'Stops',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+
+                    const SizedBox(height: 6),
+
+                    Text(
+                      getTripStops().join(' → '),
+                      style: const TextStyle(fontSize: 15),
                     ),
 
                     const SizedBox(height: 6),
