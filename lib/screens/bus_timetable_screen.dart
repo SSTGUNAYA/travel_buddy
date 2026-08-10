@@ -3,7 +3,9 @@ import '../data/trips.dart';
 import '../data/trip_manager.dart';
 
 class BusTimetableScreen extends StatefulWidget {
-  const BusTimetableScreen({super.key});
+  final String? routeNo;
+
+  const BusTimetableScreen({super.key, this.routeNo});
 
   @override
   State<BusTimetableScreen> createState() => _BusTimetableScreenState();
@@ -12,44 +14,132 @@ class BusTimetableScreen extends StatefulWidget {
 class _BusTimetableScreenState extends State<BusTimetableScreen> {
   String searchText = '';
 
+  DateTime? getDepartureDateTime(BusTrip trip) {
+    final timeParts = trip.departureTime.split(':');
+
+    if (timeParts.length < 2) {
+      return null;
+    }
+
+    int hour = int.tryParse(timeParts[0]) ?? 0;
+    int minute = int.tryParse(timeParts[1]) ?? 0;
+
+    // Handle AM / PM if departureTime contains it
+    final timeText = trip.departureTime.toLowerCase();
+
+    if (timeText.contains('pm') && hour < 12) {
+      hour += 12;
+    }
+
+    if (timeText.contains('am') && hour == 12) {
+      hour = 0;
+    }
+
+    return DateTime(
+      trip.departureDate.year,
+      trip.departureDate.month,
+      trip.departureDate.day,
+      hour,
+      minute,
+    );
+  }
+
   List<BusTrip> get filteredTrips {
     final trips = TripManager.getAllTrips();
 
-    if (searchText.trim().isEmpty) {
-      return trips;
-    }
+    final query = searchText.trim().toLowerCase();
 
-    final query = searchText.toLowerCase();
+    final filtered = trips.where((trip) {
+      final matchesRoute =
+          widget.routeNo == null || trip.routeNo == widget.routeNo;
 
-    return trips.where((trip) {
-      return trip.routeNo.toLowerCase().contains(query) ||
+      final matchesSearch =
+          query.isEmpty ||
+          trip.routeNo.toLowerCase().contains(query) ||
           trip.busNumber.toLowerCase().contains(query) ||
           trip.from.toLowerCase().contains(query) ||
           trip.to.toLowerCase().contains(query);
+
+      return matchesRoute && matchesSearch;
     }).toList();
+
+    // Sort by departure date and time
+    filtered.sort((a, b) {
+      final dateA = getDepartureDateTime(a);
+      final dateB = getDepartureDateTime(b);
+
+      if (dateA == null || dateB == null) {
+        return 0;
+      }
+
+      return dateA.compareTo(dateB);
+    });
+
+    return filtered;
   }
 
-  Color _statusColor(String status) {
+  Color getStatusColor(String status) {
     switch (status) {
       case 'Live':
         return Colors.green;
+
       case 'Completed':
         return Colors.grey;
+
       case 'Cancelled':
         return Colors.red;
+
       default:
         return Colors.orange;
     }
   }
 
-  IconData _statusIcon(String status) {
+  bool isNextBus(BusTrip trip, List<BusTrip> trips) {
+    final now = DateTime.now();
+    final departure = getDepartureDateTime(trip);
+
+    if (departure == null) {
+      return false;
+    }
+
+    // Only consider future trips
+    final futureTrips = trips.where((item) {
+      final itemDeparture = getDepartureDateTime(item);
+
+      if (itemDeparture == null) {
+        return false;
+      }
+
+      return itemDeparture.isAfter(now) &&
+          item.status != 'Completed' &&
+          item.status != 'Cancelled';
+    }).toList();
+
+    if (futureTrips.isEmpty) {
+      return false;
+    }
+
+    futureTrips.sort((a, b) {
+      final dateA = getDepartureDateTime(a)!;
+      final dateB = getDepartureDateTime(b)!;
+
+      return dateA.compareTo(dateB);
+    });
+
+    return futureTrips.first.tripId == trip.tripId;
+  }
+
+  IconData getStatusIcon(String status) {
     switch (status) {
       case 'Live':
         return Icons.location_on;
+
       case 'Completed':
         return Icons.check_circle;
+
       case 'Cancelled':
         return Icons.cancel;
+
       default:
         return Icons.schedule;
     }
@@ -69,7 +159,7 @@ class _BusTimetableScreenState extends State<BusTimetableScreen> {
 
       body: Column(
         children: [
-          // SEARCH
+          // SEARCH BOX
           Padding(
             padding: const EdgeInsets.all(16),
 
@@ -85,8 +175,6 @@ class _BusTimetableScreenState extends State<BusTimetableScreen> {
 
                 prefixIcon: const Icon(Icons.search),
 
-                border: const OutlineInputBorder(),
-
                 suffixIcon: searchText.isNotEmpty
                     ? IconButton(
                         onPressed: () {
@@ -97,11 +185,13 @@ class _BusTimetableScreenState extends State<BusTimetableScreen> {
                         icon: const Icon(Icons.clear),
                       )
                     : null,
+
+                border: const OutlineInputBorder(),
               ),
             ),
           ),
 
-          // TRIP LIST
+          // TIMETABLE
           Expanded(
             child: trips.isEmpty
                 ? const Center(
@@ -123,7 +213,10 @@ class _BusTimetableScreenState extends State<BusTimetableScreen> {
 
                         SizedBox(height: 8),
 
-                        Text('Try another route or destination.'),
+                        Text(
+                          'No scheduled trips '
+                          'found.',
+                        ),
                       ],
                     ),
                   )
@@ -134,6 +227,8 @@ class _BusTimetableScreenState extends State<BusTimetableScreen> {
 
                     itemBuilder: (context, index) {
                       final trip = trips[index];
+                      final nextBus = isNextBus(trip, trips);
+                      final isLive = trip.status == 'Live';
 
                       return Card(
                         margin: const EdgeInsets.only(bottom: 12),
@@ -162,8 +257,11 @@ class _BusTimetableScreenState extends State<BusTimetableScreen> {
 
                                   Expanded(
                                     child: Text(
-                                      '${trip.from} → '
-                                      '${trip.to}',
+                                      isLive
+                                          ? '🟢 LIVE NOW\n${trip.from} → ${trip.to}'
+                                          : nextBus
+                                          ? '⭐ NEXT BUS\n${trip.from} → ${trip.to}'
+                                          : '${trip.from} → ${trip.to}',
 
                                       style: const TextStyle(
                                         fontSize: 18,
@@ -176,7 +274,7 @@ class _BusTimetableScreenState extends State<BusTimetableScreen> {
 
                               const SizedBox(height: 15),
 
-                              // TIME
+                              // DEPARTURE TIME
                               Row(
                                 children: [
                                   const Icon(Icons.access_time),
@@ -185,7 +283,6 @@ class _BusTimetableScreenState extends State<BusTimetableScreen> {
 
                                   Text(
                                     trip.departureTime,
-
                                     style: const TextStyle(
                                       fontSize: 17,
                                       fontWeight: FontWeight.bold,
@@ -213,19 +310,16 @@ class _BusTimetableScreenState extends State<BusTimetableScreen> {
                               Row(
                                 children: [
                                   Icon(
-                                    _statusIcon(trip.status),
-
-                                    color: _statusColor(trip.status),
+                                    getStatusIcon(trip.status),
+                                    color: getStatusColor(trip.status),
                                   ),
 
                                   const SizedBox(width: 8),
 
                                   Text(
                                     trip.status,
-
                                     style: TextStyle(
-                                      color: _statusColor(trip.status),
-
+                                      color: getStatusColor(trip.status),
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
@@ -238,7 +332,6 @@ class _BusTimetableScreenState extends State<BusTimetableScreen> {
                               Text(
                                 'Stops: '
                                 '${trip.stops.join(' → ')}',
-
                                 style: const TextStyle(fontSize: 13),
                               ),
                             ],

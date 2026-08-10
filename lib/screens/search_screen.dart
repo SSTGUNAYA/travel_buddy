@@ -1,6 +1,6 @@
 import '../data/bus_routes.dart';
-import 'route_details_screen.dart';
 import 'package:flutter/material.dart';
+import 'bus_timetable_screen.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -66,10 +66,11 @@ class _SearchScreenState extends State<SearchScreen> {
                           context,
                           MaterialPageRoute(
                             builder: (context) =>
-                                RouteDetailsScreen(route: route),
+                                BusTimetableScreen(routeNo: route.routeNo),
                           ),
                         );
                       },
+
                       leading: const Icon(Icons.directions_bus),
                       title: Text(
                         "${route.routeNo} - ${route.from} → ${route.to}",
