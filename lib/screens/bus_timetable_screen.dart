@@ -274,6 +274,46 @@ class _BusTimetableScreenState extends State<BusTimetableScreen> {
 
                               const SizedBox(height: 15),
 
+                              // DEPARTURE DATE
+                              Row(
+                                children: [
+                                  const Icon(Icons.calendar_today),
+
+                                  const SizedBox(width: 8),
+
+                                  Text(
+                                    '${trip.departureDate.day.toString().padLeft(2, '0')}/'
+                                    '${trip.departureDate.month.toString().padLeft(2, '0')}/'
+                                    '${trip.departureDate.year}',
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+
+                              const SizedBox(height: 8),
+
+                              // DEPARTURE TIME
+                              Row(
+                                children: [
+                                  const Icon(Icons.access_time),
+
+                                  const SizedBox(width: 8),
+
+                                  Text(
+                                    trip.departureTime,
+                                    style: const TextStyle(
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+
+                              const SizedBox(height: 15),
+
                               // DEPARTURE TIME
                               Row(
                                 children: [
