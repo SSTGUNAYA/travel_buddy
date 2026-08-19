@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../data/bus_routes.dart';
@@ -17,6 +19,19 @@ class _SearchScreenState extends State<SearchScreen> {
 
   // Search text
   String searchQuery = '';
+
+  Timer? _refreshTimer;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _refreshTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (!mounted) return;
+
+      setState(() {});
+    });
+  }
 
   // ------------------------------------------------------------
   // GET ACTIVE DRIVER TRIPS
@@ -65,6 +80,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     searchController.dispose();
     super.dispose();
   }
