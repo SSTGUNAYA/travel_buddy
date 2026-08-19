@@ -6,6 +6,7 @@ import '../data/bus_routes.dart';
 import '../data/trips.dart';
 import '../data/trip_manager.dart';
 import 'bus_timetable_screen.dart';
+import 'live_map_screen.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -288,13 +289,23 @@ class _SearchScreenState extends State<SearchScreen> {
                           ),
 
                           onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) =>
-                                    BusTimetableScreen(routeNo: trip.routeNo),
-                              ),
-                            );
+                            if (isLive) {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      LiveMapScreen(busNumber: trip.busNumber),
+                                ),
+                              );
+                            } else {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      BusTimetableScreen(routeNo: trip.routeNo),
+                                ),
+                              );
+                            }
                           },
                         ),
                       );

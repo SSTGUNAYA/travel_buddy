@@ -18,9 +18,12 @@ class LiveMapScreen extends StatefulWidget {
 
 class _LiveMapScreenState extends State<LiveMapScreen> {
   Timer? _refreshTimer;
+
   BusTrip? currentTrip;
 
   final MapController _mapController = MapController();
+
+  bool _mapReady = false;
 
   @override
   void initState() {
@@ -35,6 +38,10 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
     });
   }
 
+  // ------------------------------------------------------------
+  // LOAD CURRENT TRIP
+  // ------------------------------------------------------------
+
   void _loadTrip() {
     final trip = TripManager.getActiveTripByBusNumber(widget.busNumber);
 
@@ -44,16 +51,27 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
       currentTrip = trip;
     });
 
-    if (trip != null && trip.latitude != null && trip.longitude != null) {
+    if (_mapReady &&
+        trip != null &&
+        trip.latitude != null &&
+        trip.longitude != null) {
       _mapController.move(LatLng(trip.latitude!, trip.longitude!), 15);
     }
   }
+
+  // ------------------------------------------------------------
+  // DISPOSE
+  // ------------------------------------------------------------
 
   @override
   void dispose() {
     _refreshTimer?.cancel();
     super.dispose();
   }
+
+  // ------------------------------------------------------------
+  // BUILD
+  // ------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
@@ -66,15 +84,32 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
       ),
-
       body: latitude != null && longitude != null
           ? Stack(
               children: [
+                // ------------------------------------------------
+                // MAP
+                // ------------------------------------------------
                 FlutterMap(
                   mapController: _mapController,
                   options: MapOptions(
                     initialCenter: LatLng(latitude, longitude),
                     initialZoom: 15,
+                    onMapReady: () {
+                      _mapReady = true;
+
+                      if (currentTrip != null &&
+                          currentTrip!.latitude != null &&
+                          currentTrip!.longitude != null) {
+                        _mapController.move(
+                          LatLng(
+                            currentTrip!.latitude!,
+                            currentTrip!.longitude!,
+                          ),
+                          15,
+                        );
+                      }
+                    },
                   ),
                   children: [
                     TileLayer(
@@ -82,7 +117,6 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
                           'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                       userAgentPackageName: 'com.example.travel_buddy',
                     ),
-
                     MarkerLayer(
                       markers: [
                         Marker(
@@ -107,16 +141,12 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
                   left: 15,
                   right: 15,
                   bottom: 15,
-
                   child: Card(
                     elevation: 5,
-
                     child: Padding(
                       padding: const EdgeInsets.all(15),
-
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-
                         children: [
                           Row(
                             children: [
@@ -125,9 +155,7 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
                                 size: 12,
                                 color: Colors.green,
                               ),
-
                               const SizedBox(width: 8),
-
                               const Text(
                                 'LIVE',
                                 style: TextStyle(
@@ -135,15 +163,11 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
                                   color: Colors.green,
                                 ),
                               ),
-
                               const Spacer(),
-
                               Text('Route ${currentTrip!.routeNo}'),
                             ],
                           ),
-
                           const SizedBox(height: 8),
-
                           Text(
                             '${currentTrip!.from} → '
                             '${currentTrip!.to}',
@@ -152,24 +176,25 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-
                           const SizedBox(height: 8),
-
                           Text(
                             'Latitude: '
                             '${latitude.toStringAsFixed(6)}',
                           ),
-
                           Text(
                             'Longitude: '
                             '${longitude.toStringAsFixed(6)}',
                           ),
-
                           if (currentTrip!.accuracy != null)
                             Text(
                               'Accuracy: '
                               '${currentTrip!.accuracy!.toStringAsFixed(1)} m',
                             ),
+                          const SizedBox(height: 5),
+                          const Text(
+                            'Location updates every 2 seconds',
+                            style: TextStyle(fontSize: 12, color: Colors.grey),
+                          ),
                         ],
                       ),
                     ),
@@ -180,12 +205,9 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
           : const Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
-
                 children: [
                   Icon(Icons.location_off, size: 60, color: Colors.grey),
-
                   SizedBox(height: 15),
-
                   Text(
                     'Live GPS location is not available.',
                     style: TextStyle(fontSize: 16),
