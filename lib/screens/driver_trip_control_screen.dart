@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -34,6 +36,10 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
   // GPS information
   Position? currentPosition;
   bool gpsActive = false;
+  // Continuous GPS tracking
+  StreamSubscription<Position>? _positionSubscription;
+
+  // ...
 
   static const String driverBusNumber = 'NB-1234';
 
@@ -305,6 +311,43 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
   }
 
   // ------------------------------------------------------------
+  // CONTINUOUS GPS TRACKING
+  // ------------------------------------------------------------
+
+  void _startLocationTracking() {
+    _positionSubscription?.cancel();
+
+    const LocationSettings locationSettings = LocationSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 10,
+    );
+
+    _positionSubscription =
+        Geolocator.getPositionStream(locationSettings: locationSettings).listen(
+          (Position position) {
+            if (!mounted || currentTrip == null) return;
+
+            setState(() {
+              currentPosition = position;
+
+              currentTrip!.latitude = position.latitude;
+              currentTrip!.longitude = position.longitude;
+              currentTrip!.accuracy = position.accuracy;
+            });
+
+            TripManager.updateTrip(currentTrip!);
+          },
+          onError: (error) {
+            if (!mounted) return;
+
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('GPS tracking error: $error')),
+            );
+          },
+        );
+  }
+
+  // ------------------------------------------------------------
   // START TRIP
   // ------------------------------------------------------------
 
@@ -345,6 +388,7 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
     });
 
     TripManager.updateTrip(currentTrip!);
+    _startLocationTracking();
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -362,6 +406,11 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
     if (tripStatus != 'Live' || currentTrip == null) {
       return;
     }
+
+    _positionSubscription?.cancel();
+    _positionSubscription = null;
+
+    // ...
 
     final completedTrip = BusTrip(
       tripId: currentTrip!.tripId,
