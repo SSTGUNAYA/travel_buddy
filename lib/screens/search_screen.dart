@@ -207,10 +207,8 @@ class _SearchScreenState extends State<SearchScreen> {
 
                           subtitle: Padding(
                             padding: const EdgeInsets.only(top: 8),
-
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
-
                               children: [
                                 Text('Route ${trip.routeNo}'),
 
@@ -220,10 +218,55 @@ class _SearchScreenState extends State<SearchScreen> {
 
                                 const SizedBox(height: 4),
 
-                                Text(
-                                  'Departure: '
-                                  '${trip.departureTime}',
-                                ),
+                                Text('Departure: ${trip.departureTime}'),
+
+                                // ------------------------------------------------
+                                // LIVE GPS INFORMATION
+                                // ------------------------------------------------
+                                if (isLive &&
+                                    trip.latitude != null &&
+                                    trip.longitude != null) ...[
+                                  const SizedBox(height: 8),
+
+                                  const Text(
+                                    'Live GPS Location',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+
+                                  const SizedBox(height: 4),
+
+                                  Text(
+                                    'Latitude: ${trip.latitude!.toStringAsFixed(6)}',
+                                  ),
+
+                                  Text(
+                                    'Longitude: ${trip.longitude!.toStringAsFixed(6)}',
+                                  ),
+
+                                  if (trip.accuracy != null)
+                                    Text(
+                                      'Accuracy: '
+                                      '${trip.accuracy!.toStringAsFixed(1)} m',
+                                    ),
+                                ],
+
+                                // ------------------------------------------------
+                                // GPS NOT AVAILABLE
+                                // ------------------------------------------------
+                                if (isLive &&
+                                    (trip.latitude == null ||
+                                        trip.longitude == null))
+                                  const Padding(
+                                    padding: EdgeInsets.only(top: 8),
+                                    child: Text(
+                                      'GPS location unavailable',
+                                      style: TextStyle(
+                                        fontStyle: FontStyle.italic,
+                                      ),
+                                    ),
+                                  ),
                               ],
                             ),
                           ),

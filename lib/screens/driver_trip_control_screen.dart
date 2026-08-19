@@ -182,6 +182,9 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
         departureDate: selectedDate,
         departureTime: selectedTime.format(context),
         status: 'Scheduled',
+        latitude: currentTrip!.latitude,
+        longitude: currentTrip!.longitude,
+        accuracy: currentTrip!.accuracy,
       );
 
       setState(() {
@@ -333,9 +336,15 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
       currentPosition = position;
       gpsActive = true;
 
+      currentTrip!.latitude = position.latitude;
+      currentTrip!.longitude = position.longitude;
+      currentTrip!.accuracy = position.accuracy;
+
       currentTrip!.status = 'Live';
       tripStatus = 'Live';
     });
+
+    TripManager.updateTrip(currentTrip!);
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -364,6 +373,9 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
       departureDate: currentTrip!.departureDate,
       departureTime: currentTrip!.departureTime,
       status: 'Completed',
+      latitude: null,
+      longitude: null,
+      accuracy: null,
     );
 
     TripManager.updateTrip(completedTrip);
