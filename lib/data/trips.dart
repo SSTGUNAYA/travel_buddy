@@ -9,9 +9,7 @@ class BusTrip {
   final String departureTime;
   String status;
 
-  // ------------------------------------------------------------
   // GPS DATA
-  // ------------------------------------------------------------
   double? latitude;
   double? longitude;
   double? accuracy;
@@ -26,8 +24,6 @@ class BusTrip {
     required this.departureDate,
     required this.departureTime,
     required this.status,
-
-    // GPS parameters
     this.latitude,
     this.longitude,
     this.accuracy,

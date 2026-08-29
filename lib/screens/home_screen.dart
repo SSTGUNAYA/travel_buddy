@@ -1,6 +1,9 @@
-import 'package:flutter/material.dart';
-import 'owner_registration_screen.dart';
+import '../data/driver_session.dart';
+import 'driver_login_screen.dart';
 import 'driver_trip_control_screen.dart';
+
+import 'package:flutter/material.dart';
+import 'add_bus_screen.dart';
 import 'search_screen.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -10,121 +13,162 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Travel Buddy"),
+        title: const Text('Travel Buddy'),
         centerTitle: true,
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
       ),
 
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+      body: SafeArea(
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const SizedBox(height: 20),
+            Expanded(
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 25,
+                    vertical: 20,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.directions_bus,
+                        size: 85,
+                        color: Colors.blue,
+                      ),
 
-            const Icon(Icons.directions_bus, size: 80, color: Colors.blue),
+                      const SizedBox(height: 15),
 
-            const SizedBox(height: 20),
+                      const Text(
+                        'Travel Buddy',
+                        style: TextStyle(
+                          fontSize: 30,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
 
-            const Center(
-              child: Text(
-                "Travel Buddy",
-                style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
+                      const SizedBox(height: 8),
+
+                      const Text(
+                        'Your Smart Travel Companion',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 16, color: Colors.grey),
+                      ),
+
+                      const SizedBox(height: 40),
+
+                      // ------------------------------------------------
+                      // REGISTER BUS
+                      // ------------------------------------------------
+                      SizedBox(
+                        width: double.infinity,
+                        height: 55,
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const AddBusScreen(),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.directions_bus),
+                          label: const Text(
+                            'Register Bus',
+                            style: TextStyle(fontSize: 17),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 15),
+
+                      // ------------------------------------------------
+                      // DRIVER LOGIN
+                      // ------------------------------------------------
+                      SizedBox(
+                        width: double.infinity,
+                        height: 55,
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            if (DriverSession.isLoggedIn) {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => DriverTripControlScreen(
+                                    busNumber: DriverSession.busNumber!,
+                                  ),
+                                ),
+                              );
+                            } else {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      const DriverLoginScreen(),
+                                ),
+                              );
+                            }
+                          },
+                          icon: const Icon(Icons.person),
+                          label: const Text(
+                            'Driver Login',
+                            style: TextStyle(fontSize: 17),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 15),
+
+                      // ------------------------------------------------
+                      // SEARCH BUS
+                      // ------------------------------------------------
+                      SizedBox(
+                        width: double.infinity,
+                        height: 55,
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const SearchScreen(),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.search),
+                          label: const Text(
+                            'Search Bus',
+                            style: TextStyle(fontSize: 17),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
 
-            const Center(
-              child: Text(
-                "Your Smart Travel Companion",
-                style: TextStyle(fontSize: 16, color: Colors.grey),
+            // ----------------------------------------------------------
+            // ROUND HOME BUTTON
+            // ----------------------------------------------------------
+            Padding(
+              padding: const EdgeInsets.only(bottom: 18),
+              child: Container(
+                width: 62,
+                height: 62,
+                decoration: const BoxDecoration(
+                  color: Colors.blue,
+                  shape: BoxShape.circle,
+                ),
+                child: IconButton(
+                  onPressed: () {},
+                  icon: const Icon(Icons.home, size: 30, color: Colors.white),
+                  tooltip: 'Home',
+                ),
               ),
-            ),
-
-            const SizedBox(height: 40),
-
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const SearchScreen()),
-                );
-              },
-              icon: const Icon(Icons.search),
-              label: const Text("Search Bus"),
-            ),
-
-            const SizedBox(height: 15),
-
-            ElevatedButton.icon(
-              onPressed: () {},
-              icon: const Icon(Icons.location_on),
-              label: const Text("Live Bus Location"),
-            ),
-
-            const SizedBox(height: 15),
-
-            ElevatedButton.icon(
-              onPressed: () {},
-              icon: const Icon(Icons.favorite),
-              label: const Text("Favorite Routes"),
-            ),
-
-            const SizedBox(height: 15),
-
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const DriverTripControlScreen(),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.directions_bus),
-              label: const Text('Driver Trip Control'),
-            ),
-
-            const SizedBox(height: 15),
-
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const OwnerRegistrationScreen(),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.directions_bus),
-              label: const Text("Register Your Bus"),
-            ),
-
-            const SizedBox(height: 15),
-
-            ElevatedButton.icon(
-              onPressed: () {},
-              icon: const Icon(Icons.settings),
-              label: const Text("Settings"),
             ),
           ],
         ),
-      ),
-
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: 0,
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: Colors.blue,
-        unselectedItemColor: Colors.grey,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
-          BottomNavigationBarItem(icon: Icon(Icons.search), label: "Search"),
-          BottomNavigationBarItem(icon: Icon(Icons.location_on), label: "Live"),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.settings),
-            label: "Settings",
-          ),
-        ],
       ),
     );
   }

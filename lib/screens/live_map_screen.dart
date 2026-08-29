@@ -18,7 +18,6 @@ class LiveMapScreen extends StatefulWidget {
 
 class _LiveMapScreenState extends State<LiveMapScreen> {
   Timer? _refreshTimer;
-
   BusTrip? currentTrip;
 
   final MapController _mapController = MapController();
@@ -33,17 +32,14 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
 
     _refreshTimer = Timer.periodic(const Duration(seconds: 2), (_) {
       if (!mounted) return;
-
       _loadTrip();
     });
   }
 
-  // ------------------------------------------------------------
-  // LOAD CURRENT TRIP
-  // ------------------------------------------------------------
-
   void _loadTrip() {
-    final trip = TripManager.getActiveTripByBusNumber(widget.busNumber);
+    final BusTrip? trip = TripManager.getActiveTripByBusNumber(
+      widget.busNumber,
+    );
 
     if (!mounted) return;
 
@@ -59,19 +55,11 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
     }
   }
 
-  // ------------------------------------------------------------
-  // DISPOSE
-  // ------------------------------------------------------------
-
   @override
   void dispose() {
     _refreshTimer?.cancel();
     super.dispose();
   }
-
-  // ------------------------------------------------------------
-  // BUILD
-  // ------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
@@ -87,9 +75,6 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
       body: latitude != null && longitude != null
           ? Stack(
               children: [
-                // ------------------------------------------------
-                // MAP
-                // ------------------------------------------------
                 FlutterMap(
                   mapController: _mapController,
                   options: MapOptions(
@@ -121,22 +106,48 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
                       markers: [
                         Marker(
                           point: LatLng(latitude, longitude),
-                          width: 70,
-                          height: 70,
-                          child: const Icon(
-                            Icons.directions_bus,
-                            size: 45,
-                            color: Colors.red,
+                          width: 110,
+                          height: 90,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(8),
+                                  boxShadow: const [
+                                    BoxShadow(
+                                      blurRadius: 4,
+                                      offset: Offset(0, 2),
+                                      color: Colors.black26,
+                                    ),
+                                  ],
+                                ),
+                                child: Text(
+                                  currentTrip?.busNumber ?? widget.busNumber,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              const Icon(
+                                Icons.directions_bus,
+                                size: 42,
+                                color: Colors.red,
+                              ),
+                            ],
                           ),
                         ),
                       ],
                     ),
                   ],
                 ),
-
-                // ------------------------------------------------
-                // LIVE INFORMATION
-                // ------------------------------------------------
                 Positioned(
                   left: 15,
                   right: 15,
@@ -163,28 +174,29 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
                                   color: Colors.green,
                                 ),
                               ),
-                              const Spacer(),
-                              Text('Route ${currentTrip!.routeNo}'),
                             ],
                           ),
+                          const SizedBox(height: 10),
+                          Text(
+                            'Bus: ${currentTrip!.busNumber}',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text('Route ${currentTrip!.routeNo}'),
                           const SizedBox(height: 8),
                           Text(
-                            '${currentTrip!.from} → '
-                            '${currentTrip!.to}',
+                            '${currentTrip!.from} -> ${currentTrip!.to}',
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
                           const SizedBox(height: 8),
-                          Text(
-                            'Latitude: '
-                            '${latitude.toStringAsFixed(6)}',
-                          ),
-                          Text(
-                            'Longitude: '
-                            '${longitude.toStringAsFixed(6)}',
-                          ),
+                          Text('Latitude: ${latitude.toStringAsFixed(6)}'),
+                          Text('Longitude: ${longitude.toStringAsFixed(6)}'),
                           if (currentTrip!.accuracy != null)
                             Text(
                               'Accuracy: '

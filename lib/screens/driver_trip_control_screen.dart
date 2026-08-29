@@ -1,14 +1,16 @@
 import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 
-import '../data/bus_routes.dart';
 import '../data/trips.dart';
 import '../data/trip_manager.dart';
 
 class DriverTripControlScreen extends StatefulWidget {
-  const DriverTripControlScreen({super.key});
+  final String busNumber;
+
+  const DriverTripControlScreen({super.key, required this.busNumber});
 
   @override
   State<DriverTripControlScreen> createState() =>
@@ -16,129 +18,163 @@ class DriverTripControlScreen extends StatefulWidget {
 }
 
 class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
-  // Currently selected route
-  BusRoute selectedRoute = busRoutes.first;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // From / To
-  late String fromLocation;
-  late String toLocation;
+  // ============================================================
+  // BUS DATA FROM FIRESTORE
+  // ============================================================
 
-  // Date / Time
+  String routeNumber = '';
+  String fromLocation = '';
+  String toLocation = '';
+
+  bool isLoadingBus = true;
+
+  // ============================================================
+  // TRIP DATA
+  // ============================================================
+
   DateTime selectedDate = DateTime.now();
+
   TimeOfDay selectedTime = const TimeOfDay(hour: 6, minute: 30);
 
-  // Trip status
   String tripStatus = 'Scheduled';
 
-  // Current trip
   BusTrip? currentTrip;
 
-  // GPS information
+  // ============================================================
+  // GPS
+  // ============================================================
+
   Position? currentPosition;
+
   bool gpsActive = false;
-  // Continuous GPS tracking
+
   StreamSubscription<Position>? _positionSubscription;
-
-  // ...
-
-  static const String driverBusNumber = 'NB-1234';
 
   @override
   void initState() {
     super.initState();
 
-    fromLocation = selectedRoute.from;
-    toLocation = selectedRoute.to;
+    _loadBusData();
+  }
 
-    // Restore existing active trip
-    final existingTrip = TripManager.getActiveTripByBusNumber(driverBusNumber);
+  // ============================================================
+  // LOAD BUS DATA FROM FIRESTORE
+  // ============================================================
 
-    if (existingTrip != null) {
-      currentTrip = existingTrip;
-
-      tripStatus = existingTrip.status;
-
-      // Restore route
-      final matchingRoute = busRoutes.cast<BusRoute?>().firstWhere(
-        (route) => route?.routeNo == existingTrip.routeNo,
-        orElse: () => null,
+  Future<void> _loadBusData() async {
+    try {
+      final busId = widget.busNumber.trim().toUpperCase().replaceAll(
+        RegExp(r'[^A-Z0-9]+'),
+        '_',
       );
 
-      if (matchingRoute != null) {
-        selectedRoute = matchingRoute;
+      final document = await _firestore.collection('buses').doc(busId).get();
+
+      if (!mounted) return;
+
+      if (!document.exists) {
+        setState(() {
+          isLoadingBus = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Bus information was not found.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+
+        return;
       }
 
-      fromLocation = existingTrip.from;
-      toLocation = existingTrip.to;
+      final data = document.data();
 
-      selectedDate = existingTrip.departureDate;
+      if (data == null) {
+        setState(() {
+          isLoadingBus = false;
+        });
+        return;
+      }
+
+      setState(() {
+        routeNumber = data['routeNumber']?.toString() ?? '';
+        fromLocation = data['from']?.toString() ?? '';
+        toLocation = data['to']?.toString() ?? '';
+        isLoadingBus = false;
+      });
+
+      final existingTrip = TripManager.getActiveTripByBusNumber(
+        widget.busNumber,
+      );
+
+      if (existingTrip != null && mounted) {
+        final parsedTime = _parseTime(existingTrip.departureTime);
+
+        setState(() {
+          currentTrip = existingTrip;
+          tripStatus = existingTrip.status;
+          selectedDate = existingTrip.departureDate;
+          fromLocation = existingTrip.from;
+          toLocation = existingTrip.to;
+
+          if (parsedTime != null) {
+            selectedTime = parsedTime;
+          }
+
+          gpsActive = existingTrip.status == 'Live';
+        });
+
+        if (existingTrip.status == 'Live') {
+          _startLocationTracking();
+        }
+      }
+    } on FirebaseException catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        isLoadingBus = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to load bus: ${e.message ?? e.code}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        isLoadingBus = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error loading bus: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
-
-  void _changeRoute(BusRoute? route) {
-    if (route == null) return;
-
-    setState(() {
-      selectedRoute = route;
-      fromLocation = route.from;
-      toLocation = route.to;
-      tripStatus = 'Scheduled';
-
-      currentTrip = null;
-
-      currentPosition = null;
-      gpsActive = false;
-    });
-  }
-
-  // ------------------------------------------------------------
-  // SWITCH FROM / TO
-  // ------------------------------------------------------------
-
-  void _switchRoute() {
-    if (tripStatus == 'Live') return;
-
-    setState(() {
-      final temp = fromLocation;
-      fromLocation = toLocation;
-      toLocation = temp;
-    });
-  }
-
-  // ------------------------------------------------------------
-  // GET TRIP STOPS
-  // ------------------------------------------------------------
-
-  List<String> getTripStops() {
-    final stops = selectedRoute.stops;
-
-    final fromIndex = stops.indexOf(fromLocation);
-    final toIndex = stops.indexOf(toLocation);
-
-    if (fromIndex == -1 || toIndex == -1) {
-      return [];
-    }
-
-    if (fromIndex <= toIndex) {
-      return stops.sublist(fromIndex, toIndex + 1);
-    }
-
-    return stops.sublist(toIndex, fromIndex + 1).reversed.toList();
-  }
-
-  // ------------------------------------------------------------
-  // SELECT DATE
-  // ------------------------------------------------------------
+  // ============================================================
+  // DATE
+  // ============================================================
 
   Future<void> _selectDate() async {
-    if (tripStatus == 'Live') return;
+    if (tripStatus == 'Live') {
+      return;
+    }
 
-    final DateTime? pickedDate = await showDatePicker(
+    final pickedDate = await showDatePicker(
       context: context,
       initialDate: selectedDate,
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
+
+    if (!mounted) return;
 
     if (pickedDate != null) {
       setState(() {
@@ -147,152 +183,288 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
     }
   }
 
-  // ------------------------------------------------------------
-  // SELECT TIME
-  // ------------------------------------------------------------
+  // ============================================================
+  // TIME
+  // ============================================================
 
   Future<void> _selectTime() async {
-    if (tripStatus == 'Live') return;
+    if (tripStatus == 'Live') {
+      return;
+    }
 
-    final TimeOfDay? pickedTime = await showTimePicker(
+    final pickedTime = await showTimePicker(
       context: context,
       initialTime: selectedTime,
     );
 
+    if (!mounted) return;
+
     if (pickedTime != null) {
       setState(() {
         selectedTime = pickedTime;
-        tripStatus = 'Scheduled';
       });
     }
   }
 
-  // ------------------------------------------------------------
-  // SAVE SCHEDULE
-  // ------------------------------------------------------------
+  // ============================================================
+  // SAVE / UPDATE TRIP
+  // ============================================================
 
-  void _saveSchedule() {
-    if (tripStatus == 'Live') return;
+  void _saveTrip() {
+    if (tripStatus == 'Live') {
+      return;
+    }
 
-    // ------------------------------------------------------------
+    final from = fromLocation.trim();
+
+    final to = toLocation.trim();
+
+    final route = routeNumber.trim();
+
+    if (route.isEmpty || from.isEmpty || to.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Route, From and To are required.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+
+      return;
+    }
+
+    if (from.toLowerCase() == to.toLowerCase()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('From and To cannot be the same.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+
+      return;
+    }
+
+    final departureTime = selectedTime.format(context);
+
+    // ==========================================================
     // UPDATE EXISTING TRIP
-    // ------------------------------------------------------------
+    // ==========================================================
+
     if (currentTrip != null) {
       final updatedTrip = BusTrip(
         tripId: currentTrip!.tripId,
-        routeNo: selectedRoute.routeNo,
-        busNumber: driverBusNumber,
-        from: fromLocation,
-        to: toLocation,
-        stops: getTripStops(),
+        routeNo: route,
+        busNumber: widget.busNumber,
+        from: from,
+        to: to,
+        stops: [from, to],
         departureDate: selectedDate,
-        departureTime: selectedTime.format(context),
+        departureTime: departureTime,
         status: 'Scheduled',
         latitude: currentTrip!.latitude,
         longitude: currentTrip!.longitude,
         accuracy: currentTrip!.accuracy,
       );
 
+      TripManager.updateTrip(updatedTrip);
+
+      if (!mounted) return;
+
       setState(() {
         currentTrip = updatedTrip;
+
         tripStatus = 'Scheduled';
 
         currentPosition = null;
+
         gpsActive = false;
       });
 
-      TripManager.updateTrip(updatedTrip);
-
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Trip updated successfully.')),
+        const SnackBar(
+          content: Text('Trip updated successfully.'),
+          backgroundColor: Colors.green,
+        ),
       );
 
       return;
     }
 
-    // ------------------------------------------------------------
+    // ==========================================================
     // CREATE NEW TRIP
-    // ------------------------------------------------------------
+    // ==========================================================
+
     final newTrip = BusTrip(
       tripId: DateTime.now().millisecondsSinceEpoch.toString(),
-      routeNo: selectedRoute.routeNo,
-      busNumber: driverBusNumber,
-      from: fromLocation,
-      to: toLocation,
-      stops: getTripStops(),
+
+      routeNo: route,
+
+      busNumber: widget.busNumber,
+
+      from: from,
+
+      to: to,
+
+      stops: [from, to],
+
       departureDate: selectedDate,
-      departureTime: selectedTime.format(context),
+
+      departureTime: departureTime,
+
       status: 'Scheduled',
     );
 
+    TripManager.addTrip(newTrip);
+
+    if (!mounted) return;
+
     setState(() {
       currentTrip = newTrip;
+
       tripStatus = 'Scheduled';
 
+      currentPosition = null;
+
+      gpsActive = false;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Trip saved successfully.'),
+        backgroundColor: Colors.green,
+      ),
+    );
+  }
+
+  // ============================================================
+  // DELETE TRIP
+  // ============================================================
+
+  Future<void> _deleteTrip() async {
+    if (currentTrip == null) {
+      return;
+    }
+
+    if (tripStatus == 'Live') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Stop the trip before deleting it.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Delete Trip?'),
+          content: const Text('Are you sure you want to delete this trip?'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(false);
+              },
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    final tripId = currentTrip!.tripId;
+
+    TripManager.trips.removeWhere((trip) => trip.tripId == tripId);
+
+    if (!mounted) return;
+
+    setState(() {
+      currentTrip = null;
+      tripStatus = 'Scheduled';
       currentPosition = null;
       gpsActive = false;
     });
 
-    TripManager.addTrip(newTrip);
-
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Trip schedule saved successfully.')),
+      const SnackBar(
+        content: Text('Trip deleted successfully.'),
+        backgroundColor: Colors.green,
+      ),
     );
   }
 
+  // ============================================================
+  // GET GPS LOCATION
+  // ============================================================
+
   Future<Position?> _getCurrentLocation() async {
-    // Check whether GPS / location service is enabled
-    final bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
 
     if (!serviceEnabled) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Please turn on GPS / Location service.'),
-          ),
-        );
-      }
+      if (!mounted) return null;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please turn on GPS / Location service.'),
+          backgroundColor: Colors.red,
+        ),
+      );
 
       return null;
     }
 
-    // Check permission
     LocationPermission permission = await Geolocator.checkPermission();
 
-    // Request permission if not granted
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
 
       if (permission == LocationPermission.denied) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Location permission denied.')),
-          );
-        }
+        if (!mounted) return null;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Location permission denied.'),
+            backgroundColor: Colors.red,
+          ),
+        );
 
         return null;
       }
     }
 
-    // Permanently denied
     if (permission == LocationPermission.deniedForever) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Location permission is permanently denied. '
-              'Please enable it from Settings.',
-            ),
+      if (!mounted) return null;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Location permission is permanently denied. '
+            'Please enable it from Settings.',
           ),
-        );
-      }
+          backgroundColor: Colors.red,
+        ),
+      );
 
       return null;
     }
 
-    // Get current position
     try {
-      final Position position = await Geolocator.getCurrentPosition(
+      final position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
         ),
@@ -300,117 +472,146 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
 
       return position;
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Unable to get GPS location: $e')),
-        );
-      }
+      if (!mounted) return null;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Unable to get GPS location: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
 
       return null;
     }
   }
 
-  // ------------------------------------------------------------
-  // CONTINUOUS GPS TRACKING
-  // ------------------------------------------------------------
+  // ============================================================
+  // CONTINUOUS GPS
+  // ============================================================
 
   void _startLocationTracking() {
     _positionSubscription?.cancel();
 
-    const LocationSettings locationSettings = LocationSettings(
+    const locationSettings = LocationSettings(
       accuracy: LocationAccuracy.high,
       distanceFilter: 10,
     );
 
     _positionSubscription =
         Geolocator.getPositionStream(locationSettings: locationSettings).listen(
-          (Position position) {
-            if (!mounted || currentTrip == null) return;
+          (position) {
+            if (!mounted || currentTrip == null || tripStatus != 'Live') {
+              return;
+            }
+
+            final updatedTrip = BusTrip(
+              tripId: currentTrip!.tripId,
+              routeNo: currentTrip!.routeNo,
+              busNumber: currentTrip!.busNumber,
+              from: currentTrip!.from,
+              to: currentTrip!.to,
+              stops: currentTrip!.stops,
+              departureDate: currentTrip!.departureDate,
+              departureTime: currentTrip!.departureTime,
+              status: 'Live',
+              latitude: position.latitude,
+              longitude: position.longitude,
+              accuracy: position.accuracy,
+            );
 
             setState(() {
               currentPosition = position;
 
-              currentTrip!.latitude = position.latitude;
-              currentTrip!.longitude = position.longitude;
-              currentTrip!.accuracy = position.accuracy;
+              currentTrip = updatedTrip;
             });
 
-            TripManager.updateTrip(currentTrip!);
+            TripManager.updateTrip(updatedTrip);
           },
           onError: (error) {
             if (!mounted) return;
 
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('GPS tracking error: $error')),
+              SnackBar(
+                content: Text('GPS tracking error: $error'),
+                backgroundColor: Colors.red,
+              ),
             );
           },
         );
   }
 
-  // ------------------------------------------------------------
+  // ============================================================
   // START TRIP
-  // ------------------------------------------------------------
+  // ============================================================
 
   Future<void> _startTrip() async {
     if (currentTrip == null) {
-      if (!mounted) return;
-
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please save the trip schedule first.')),
+        const SnackBar(
+          content: Text('Please save the trip first.'),
+          backgroundColor: Colors.red,
+        ),
       );
 
       return;
     }
 
-    // Get GPS location first
-    final Position? position = await _getCurrentLocation();
+    final position = await _getCurrentLocation();
 
-    //IMPORTANT:
-    //Check whether this screen is still mounted:
-    //after the async operation.
     if (!mounted) return;
 
     if (position == null) {
       return;
     }
 
-    // Start trip
+    final liveTrip = BusTrip(
+      tripId: currentTrip!.tripId,
+      routeNo: currentTrip!.routeNo,
+      busNumber: currentTrip!.busNumber,
+      from: currentTrip!.from,
+      to: currentTrip!.to,
+      stops: currentTrip!.stops,
+      departureDate: currentTrip!.departureDate,
+      departureTime: currentTrip!.departureTime,
+      status: 'Live',
+      latitude: position.latitude,
+      longitude: position.longitude,
+      accuracy: position.accuracy,
+    );
+
+    TripManager.updateTrip(liveTrip);
+
     setState(() {
-      currentPosition = position;
+      currentTrip = liveTrip;
+
+      tripStatus = 'Live';
+
       gpsActive = true;
 
-      currentTrip!.latitude = position.latitude;
-      currentTrip!.longitude = position.longitude;
-      currentTrip!.accuracy = position.accuracy;
-
-      currentTrip!.status = 'Live';
-      tripStatus = 'Live';
+      currentPosition = position;
     });
 
-    TripManager.updateTrip(currentTrip!);
     _startLocationTracking();
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Trip started successfully. GPS is active.'),
+        content: Text('Trip started. GPS is active.'),
         backgroundColor: Colors.green,
       ),
     );
   }
 
-  // ------------------------------------------------------------
-  // COMPLETE TRIP
-  // ------------------------------------------------------------
+  // ============================================================
+  // STOP TRIP
+  // ============================================================
 
-  void _completeTrip() {
+  void _stopTrip() {
     if (tripStatus != 'Live' || currentTrip == null) {
       return;
     }
 
     _positionSubscription?.cancel();
     _positionSubscription = null;
-
-    // ...
 
     final completedTrip = BusTrip(
       tripId: currentTrip!.tripId,
@@ -429,22 +630,66 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
 
     TripManager.updateTrip(completedTrip);
 
+    if (!mounted) return;
+
     setState(() {
       currentTrip = completedTrip;
+
       tripStatus = 'Completed';
 
       gpsActive = false;
+
       currentPosition = null;
     });
 
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Trip completed')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Trip stopped successfully.'),
+        backgroundColor: Colors.green,
+      ),
+    );
   }
 
-  // ------------------------------------------------------------
+  TimeOfDay? _parseTime(String value) {
+    try {
+      final text = value.trim();
+
+      final match = RegExp(
+        r'^(\d{1,2}):(\d{2})\s*(AM|PM)$',
+        caseSensitive: false,
+      ).firstMatch(text);
+
+      if (match == null) {
+        return null;
+      }
+
+      int hour = int.parse(match.group(1)!);
+      final int minute = int.parse(match.group(2)!);
+      final String period = match.group(3)!.toUpperCase();
+
+      if (hour < 1 || hour > 12 || minute < 0 || minute > 59) {
+        return null;
+      }
+
+      if (period == 'AM') {
+        if (hour == 12) {
+          hour = 0;
+        }
+      } else {
+        if (hour != 12) {
+          hour += 12;
+        }
+      }
+
+      return TimeOfDay(hour: hour, minute: minute);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // ============================================================
   // FORMAT DATE
-  // ------------------------------------------------------------
+  // ============================================================
 
   String _formatDate(DateTime date) {
     return '${date.day.toString().padLeft(2, '0')}/'
@@ -452,12 +697,34 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
         '${date.year}';
   }
 
-  // ------------------------------------------------------------
+  // ============================================================
+  // DISPOSE
+  // ============================================================
+
+  @override
+  void dispose() {
+    _positionSubscription?.cancel();
+    super.dispose();
+  }
+
+  // ============================================================
   // BUILD
-  // ------------------------------------------------------------
+  // ============================================================
 
   @override
   Widget build(BuildContext context) {
+    if (isLoadingBus) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Driver Trip Control'),
+          centerTitle: true,
+          backgroundColor: Colors.blue,
+          foregroundColor: Colors.white,
+        ),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Driver Trip Control'),
@@ -468,21 +735,18 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
 
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
-
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-
           children: [
-            // --------------------------------------------------
+            // ====================================================
             // BUS INFORMATION
-            // --------------------------------------------------
+            // ====================================================
             Card(
+              elevation: 3,
               child: Padding(
                 padding: const EdgeInsets.all(16),
-
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-
                   children: [
                     const Text(
                       'Bus Information',
@@ -494,15 +758,26 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
 
                     const SizedBox(height: 12),
 
-                    const Text(
-                      'Bus Number: NB-1234',
-                      style: TextStyle(fontSize: 16),
+                    Row(
+                      children: [
+                        const Icon(Icons.directions_bus, color: Colors.blue),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Bus Number: ${widget.busNumber}',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
 
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 8),
 
                     Text(
-                      'Route No: ${selectedRoute.routeNo}',
+                      'Route No: $routeNumber',
                       style: const TextStyle(fontSize: 16),
                     ),
                   ],
@@ -512,45 +787,9 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
 
             const SizedBox(height: 20),
 
-            // --------------------------------------------------
-            // SELECT ROUTE
-            // --------------------------------------------------
-            const Text(
-              'Select Route',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-
-            const SizedBox(height: 8),
-
-            DropdownButtonFormField<BusRoute>(
-              initialValue: selectedRoute,
-
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.route),
-              ),
-
-              items: busRoutes
-                  .map(
-                    (route) => DropdownMenuItem<BusRoute>(
-                      value: route,
-                      child: Text(
-                        '${route.routeNo} - '
-                        '${route.from} → '
-                        '${route.to}',
-                      ),
-                    ),
-                  )
-                  .toList(),
-
-              onChanged: tripStatus == 'Live' ? null : _changeRoute,
-            ),
-
-            const SizedBox(height: 20),
-
-            // --------------------------------------------------
+            // ====================================================
             // FROM
-            // --------------------------------------------------
+            // ====================================================
             const Text(
               'From',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -558,54 +797,45 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
 
             const SizedBox(height: 8),
 
-            DropdownButtonFormField<String>(
+            TextFormField(
+              key: ValueKey('from_$fromLocation'),
               initialValue: fromLocation,
-
+              enabled: tripStatus != 'Live',
               decoration: const InputDecoration(
-                border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.trip_origin),
+                border: OutlineInputBorder(),
               ),
-
-              items: selectedRoute.stops
-                  .map(
-                    (stop) => DropdownMenuItem<String>(
-                      value: stop,
-                      child: Text(stop),
-                    ),
-                  )
-                  .toList(),
-
-              onChanged: tripStatus == 'Live'
-                  ? null
-                  : (value) {
-                      if (value == null) {
-                        return;
-                      }
-
-                      setState(() {
-                        fromLocation = value;
-                      });
-                    },
+              onChanged: (value) {
+                fromLocation = value;
+              },
             ),
 
-            const SizedBox(height: 10),
+            const SizedBox(height: 20),
 
-            // --------------------------------------------------
-            // SWITCH BUTTON
-            // --------------------------------------------------
+            // ====================================================
+            // SWITCH
+            // ====================================================
             Center(
               child: IconButton(
-                onPressed: tripStatus == 'Live' ? null : _switchRoute,
+                onPressed: tripStatus == 'Live'
+                    ? null
+                    : () {
+                        setState(() {
+                          final temp = fromLocation;
 
+                          fromLocation = toLocation;
+
+                          toLocation = temp;
+                        });
+                      },
                 icon: const Icon(Icons.swap_vert, size: 35),
-
                 tooltip: 'Switch From and To',
               ),
             ),
 
-            // --------------------------------------------------
+            // ====================================================
             // TO
-            // --------------------------------------------------
+            // ====================================================
             const Text(
               'To',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -613,41 +843,24 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
 
             const SizedBox(height: 8),
 
-            DropdownButtonFormField<String>(
+            TextFormField(
+              key: ValueKey('to_$toLocation'),
               initialValue: toLocation,
-
+              enabled: tripStatus != 'Live',
               decoration: const InputDecoration(
-                border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.location_on),
+                border: OutlineInputBorder(),
               ),
-
-              items: selectedRoute.stops
-                  .map(
-                    (stop) => DropdownMenuItem<String>(
-                      value: stop,
-                      child: Text(stop),
-                    ),
-                  )
-                  .toList(),
-
-              onChanged: tripStatus == 'Live'
-                  ? null
-                  : (value) {
-                      if (value == null) {
-                        return;
-                      }
-
-                      setState(() {
-                        toLocation = value;
-                      });
-                    },
+              onChanged: (value) {
+                toLocation = value;
+              },
             ),
 
             const SizedBox(height: 20),
 
-            // --------------------------------------------------
+            // ====================================================
             // DATE
-            // --------------------------------------------------
+            // ====================================================
             const Text(
               'Departure Date',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -657,23 +870,20 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
 
             SizedBox(
               width: double.infinity,
-
               child: OutlinedButton.icon(
                 onPressed: tripStatus == 'Live' ? null : _selectDate,
-
                 icon: const Icon(Icons.calendar_month),
-
                 label: Text(_formatDate(selectedDate)),
               ),
             ),
 
             const SizedBox(height: 20),
 
-            // --------------------------------------------------
+            // ====================================================
             // TIME
-            // --------------------------------------------------
+            // ====================================================
             const Text(
-              'Scheduled Departure Time',
+              'Departure Time',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
 
@@ -681,28 +891,23 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
 
             SizedBox(
               width: double.infinity,
-
               child: OutlinedButton.icon(
                 onPressed: tripStatus == 'Live' ? null : _selectTime,
-
                 icon: const Icon(Icons.access_time),
-
                 label: Text(selectedTime.format(context)),
               ),
             ),
 
             const SizedBox(height: 20),
 
-            // --------------------------------------------------
+            // ====================================================
             // TRIP SUMMARY
-            // --------------------------------------------------
+            // ====================================================
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
-
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-
                   children: [
                     const Text(
                       'Trip Summary',
@@ -712,34 +917,28 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
                       ),
                     ),
 
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
 
                     Text(
                       '$fromLocation → '
                       '$toLocation',
-                      style: const TextStyle(fontSize: 18),
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
 
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 8),
 
-                    const Text(
-                      'Stops',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
+                    Text('Route $routeNumber'),
 
                     const SizedBox(height: 6),
 
-                    Text(
-                      getTripStops().join(' → '),
-                      style: const TextStyle(fontSize: 15),
-                    ),
+                    Text('Date: ${_formatDate(selectedDate)}'),
 
                     const SizedBox(height: 6),
 
-                    Text(
-                      'Estimated time: '
-                      '${selectedRoute.estimatedTime}',
-                    ),
+                    Text('Time: ${selectedTime.format(context)}'),
                   ],
                 ),
               ),
@@ -747,9 +946,9 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
 
             const SizedBox(height: 20),
 
-            // --------------------------------------------------
+            // ====================================================
             // STATUS
-            // --------------------------------------------------
+            // ====================================================
             Card(
               child: ListTile(
                 leading: Icon(
@@ -758,63 +957,74 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
                       : tripStatus == 'Completed'
                       ? Icons.check_circle
                       : Icons.schedule,
-
                   color: tripStatus == 'Live'
                       ? Colors.green
                       : tripStatus == 'Completed'
                       ? Colors.grey
                       : Colors.orange,
                 ),
-
                 title: const Text(
                   'Trip Status',
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
-
                 subtitle: Text(tripStatus),
               ),
             ),
 
             const SizedBox(height: 20),
 
-            // --------------------------------------------------
-            // SAVE
-            // --------------------------------------------------
+            // ====================================================
+            // SAVE / UPDATE
+            // ====================================================
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: ElevatedButton.icon(
+                onPressed: tripStatus == 'Live' ? null : _saveTrip,
+                icon: const Icon(Icons.save),
+                label: Text(
+                  currentTrip == null ? 'SAVE TRIP' : 'UPDATE TRIP',
+                  style: const TextStyle(fontSize: 16),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            // ====================================================
+            // DELETE
+            // ====================================================
             SizedBox(
               width: double.infinity,
               height: 50,
-
-              child: ElevatedButton.icon(
-                onPressed: tripStatus == 'Live' ? null : _saveSchedule,
-
-                icon: const Icon(Icons.save),
-
-                label: const Text(
-                  'SAVE / UPDATE TRIP',
-                  style: TextStyle(fontSize: 16),
+              child: OutlinedButton.icon(
+                onPressed: currentTrip != null && tripStatus != 'Live'
+                    ? _deleteTrip
+                    : null,
+                icon: const Icon(Icons.delete_outline),
+                label: const Text('DELETE TRIP'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.red,
+                  side: const BorderSide(color: Colors.red),
                 ),
               ),
             ),
 
             const SizedBox(height: 15),
 
-            // --------------------------------------------------
-            // START TRIP
-            // --------------------------------------------------
+            // ====================================================
+            // START
+            // ====================================================
             SizedBox(
               width: double.infinity,
               height: 55,
-
               child: ElevatedButton.icon(
                 onPressed: tripStatus == 'Scheduled' ? _startTrip : null,
-
                 icon: const Icon(Icons.play_arrow),
-
                 label: const Text(
                   'START TRIP',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
-
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green,
                   foregroundColor: Colors.white,
@@ -824,141 +1034,91 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
 
             const SizedBox(height: 15),
 
-            // --------------------------------------------------
-            // COMPLETE TRIP
-            // --------------------------------------------------
+            // ====================================================
+            // STOP
+            // ====================================================
             SizedBox(
               width: double.infinity,
-              height: 50,
-
+              height: 52,
               child: OutlinedButton.icon(
-                onPressed: tripStatus == 'Live' ? _completeTrip : null,
-
+                onPressed: tripStatus == 'Live' ? _stopTrip : null,
                 icon: const Icon(Icons.stop),
-
-                label: const Text('COMPLETE TRIP'),
+                label: const Text('STOP TRIP', style: TextStyle(fontSize: 17)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.red,
+                  side: const BorderSide(color: Colors.red),
+                ),
               ),
             ),
 
             const SizedBox(height: 25),
 
-            // --------------------------------------------------
+            // ====================================================
             // LIVE LOCATION
-            // --------------------------------------------------
+            // ====================================================
             if (tripStatus == 'Live')
               Card(
+                elevation: 3,
                 child: Padding(
                   padding: const EdgeInsets.all(16),
-
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-
                     children: [
                       Row(
                         children: [
                           const Icon(Icons.gps_fixed, color: Colors.green),
-
                           const SizedBox(width: 8),
-
-                          const Text(
-                            'Live Location',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-
-                          const Spacer(),
-
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 5,
-                            ),
-
-                            decoration: BoxDecoration(
-                              color: Colors.green.shade50,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-
-                            child: const Text(
-                              'GPS ACTIVE',
+                          const Expanded(
+                            child: Text(
+                              'Live Location',
                               style: TextStyle(
-                                color: Colors.green,
+                                fontSize: 18,
                                 fontWeight: FontWeight.bold,
-                                fontSize: 12,
                               ),
                             ),
                           ),
+                          if (gpsActive)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.green.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: const Text(
+                                'GPS ACTIVE',
+                                style: TextStyle(
+                                  color: Colors.green,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
                         ],
                       ),
 
                       const SizedBox(height: 15),
 
                       if (currentPosition != null) ...[
-                        Row(
-                          children: [
-                            const Icon(Icons.my_location, size: 20),
-
-                            const SizedBox(width: 8),
-
-                            const Text(
-                              'Latitude:',
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-
-                            const SizedBox(width: 8),
-
-                            Expanded(
-                              child: Text(
-                                currentPosition!.latitude.toStringAsFixed(6),
-                              ),
-                            ),
-                          ],
+                        Text(
+                          'Latitude: '
+                          '${currentPosition!.latitude.toStringAsFixed(6)}',
                         ),
 
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 8),
 
-                        Row(
-                          children: [
-                            const Icon(Icons.location_on, size: 20),
-
-                            const SizedBox(width: 8),
-
-                            const Text(
-                              'Longitude:',
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-
-                            const SizedBox(width: 8),
-
-                            Expanded(
-                              child: Text(
-                                currentPosition!.longitude.toStringAsFixed(6),
-                              ),
-                            ),
-                          ],
+                        Text(
+                          'Longitude: '
+                          '${currentPosition!.longitude.toStringAsFixed(6)}',
                         ),
 
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 8),
 
-                        Row(
-                          children: [
-                            const Icon(Icons.gps_fixed, size: 20),
-
-                            const SizedBox(width: 8),
-
-                            const Text(
-                              'Accuracy:',
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-
-                            const SizedBox(width: 8),
-
-                            Text(
-                              '${currentPosition!.accuracy.toStringAsFixed(1)} m',
-                            ),
-                          ],
+                        Text(
+                          'Accuracy: '
+                          '${currentPosition!.accuracy.toStringAsFixed(1)} m',
                         ),
                       ] else
                         const Text('Waiting for GPS location...'),
