@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
+import '../data/driver_session.dart';
 import '../data/trips.dart';
 import '../data/trip_manager.dart';
 
@@ -27,6 +29,7 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
   String routeNumber = '';
   String fromLocation = '';
   String toLocation = '';
+  String busCategory = '';
 
   bool isLoadingBus = true;
 
@@ -36,9 +39,11 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
 
   DateTime selectedDate = DateTime.now();
 
-  TimeOfDay selectedTime = const TimeOfDay(hour: 6, minute: 30);
+  // Current time will be assigned in initState()
+  late TimeOfDay selectedTime;
 
-  String tripStatus = 'Scheduled';
+  // No trip exists when page is first opened
+  String tripStatus = 'Not Saved';
 
   BusTrip? currentTrip;
 
@@ -52,9 +57,18 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
 
   StreamSubscription<Position>? _positionSubscription;
 
+  // ============================================================
+  // INIT STATE
+  // ============================================================
+
   @override
   void initState() {
     super.initState();
+
+    // Use current time instead of fixed 6:30 AM
+    final now = TimeOfDay.now();
+
+    selectedTime = now;
 
     _loadBusData();
   }
@@ -95,15 +109,21 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
         setState(() {
           isLoadingBus = false;
         });
+
         return;
       }
 
       setState(() {
         routeNumber = data['routeNumber']?.toString() ?? '';
+        busCategory = data['busCategory']?.toString() ?? '';
         fromLocation = data['from']?.toString() ?? '';
         toLocation = data['to']?.toString() ?? '';
         isLoadingBus = false;
       });
+
+      // ========================================================
+      // CHECK EXISTING ACTIVE TRIP
+      // ========================================================
 
       final existingTrip = TripManager.getActiveTripByBusNumber(
         widget.busNumber,
@@ -114,9 +134,13 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
 
         setState(() {
           currentTrip = existingTrip;
+
           tripStatus = existingTrip.status;
+
           selectedDate = existingTrip.departureDate;
+
           fromLocation = existingTrip.from;
+
           toLocation = existingTrip.to;
 
           if (parsedTime != null) {
@@ -158,6 +182,60 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
       );
     }
   }
+
+  // ============================================================
+  // LOGOUT
+  // ============================================================
+
+  Future<void> _logout() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Logout?'),
+          content: const Text('Are you sure you want to logout?'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(false);
+              },
+              child: const Text('CANCEL'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+              child: const Text('LOGOUT'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    // Stop GPS tracking
+    await _positionSubscription?.cancel();
+    _positionSubscription = null;
+
+    // Clear Firebase Authentication session
+    await FirebaseAuth.instance.signOut();
+
+    // Clear local driver session
+    DriverSession.logout();
+
+    if (!mounted) return;
+
+    // Go back to Home page
+    Navigator.of(context).popUntil((route) => route.isFirst);
+  }
+
   // ============================================================
   // DATE
   // ============================================================
@@ -243,6 +321,29 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
       return;
     }
 
+    final now = DateTime.now();
+
+    final selectedDateTime = DateTime(
+      selectedDate.year,
+      selectedDate.month,
+      selectedDate.day,
+      selectedTime.hour,
+      selectedTime.minute,
+    );
+
+    if (selectedDateTime.isBefore(now)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Departure time cannot be earlier than the current time.',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+
+      return;
+    }
+
     final departureTime = selectedTime.format(context);
 
     // ==========================================================
@@ -254,6 +355,7 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
         tripId: currentTrip!.tripId,
         routeNo: route,
         busNumber: widget.busNumber,
+        busCategory: busCategory,
         from: from,
         to: to,
         stops: [from, to],
@@ -295,21 +397,14 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
 
     final newTrip = BusTrip(
       tripId: DateTime.now().millisecondsSinceEpoch.toString(),
-
       routeNo: route,
-
       busNumber: widget.busNumber,
-
+      busCategory: busCategory,
       from: from,
-
       to: to,
-
       stops: [from, to],
-
       departureDate: selectedDate,
-
       departureTime: departureTime,
-
       status: 'Scheduled',
     );
 
@@ -395,8 +490,11 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
 
     setState(() {
       currentTrip = null;
-      tripStatus = 'Scheduled';
+
+      tripStatus = 'Not Saved';
+
       currentPosition = null;
+
       gpsActive = false;
     });
 
@@ -508,6 +606,7 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
               tripId: currentTrip!.tripId,
               routeNo: currentTrip!.routeNo,
               busNumber: currentTrip!.busNumber,
+              busCategory: currentTrip!.busCategory,
               from: currentTrip!.from,
               to: currentTrip!.to,
               stops: currentTrip!.stops,
@@ -568,6 +667,7 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
       tripId: currentTrip!.tripId,
       routeNo: currentTrip!.routeNo,
       busNumber: currentTrip!.busNumber,
+      busCategory: currentTrip!.busCategory,
       from: currentTrip!.from,
       to: currentTrip!.to,
       stops: currentTrip!.stops,
@@ -611,12 +711,14 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
     }
 
     _positionSubscription?.cancel();
+
     _positionSubscription = null;
 
     final completedTrip = BusTrip(
       tripId: currentTrip!.tripId,
       routeNo: currentTrip!.routeNo,
       busNumber: currentTrip!.busNumber,
+      busCategory: currentTrip!.busCategory,
       from: currentTrip!.from,
       to: currentTrip!.to,
       stops: currentTrip!.stops,
@@ -633,12 +735,9 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
     if (!mounted) return;
 
     setState(() {
-      currentTrip = completedTrip;
-
-      tripStatus = 'Completed';
-
+      currentTrip = null;
+      tripStatus = 'Not Saved';
       gpsActive = false;
-
       currentPosition = null;
     });
 
@@ -649,6 +748,10 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
       ),
     );
   }
+
+  // ============================================================
+  // PARSE TIME
+  // ============================================================
 
   TimeOfDay? _parseTime(String value) {
     try {
@@ -664,7 +767,9 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
       }
 
       int hour = int.parse(match.group(1)!);
+
       final int minute = int.parse(match.group(2)!);
+
       final String period = match.group(3)!.toUpperCase();
 
       if (hour < 1 || hour > 12 || minute < 0 || minute > 59) {
@@ -704,6 +809,7 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
   @override
   void dispose() {
     _positionSubscription?.cancel();
+
     super.dispose();
   }
 
@@ -724,6 +830,8 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
         body: const Center(child: CircularProgressIndicator()),
       );
     }
+
+    final bool hasTrip = currentTrip != null;
 
     return Scaffold(
       appBar: AppBar(
@@ -774,11 +882,36 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
                       ],
                     ),
 
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 10),
 
-                    Text(
-                      'Route No: $routeNumber',
-                      style: const TextStyle(fontSize: 16),
+                    Row(
+                      children: [
+                        const Icon(Icons.route, color: Colors.blue),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Route No: $routeNumber',
+                            style: const TextStyle(fontSize: 16),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    Row(
+                      children: [
+                        const Icon(Icons.category, color: Colors.blue),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            busCategory.isEmpty
+                                ? 'Bus Category: Not specified'
+                                : 'Bus Category: $busCategory',
+                            style: const TextStyle(fontSize: 16),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -919,26 +1052,74 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
 
                     const SizedBox(height: 12),
 
-                    Text(
-                      '$fromLocation → '
-                      '$toLocation',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w500,
+                    if (!hasTrip) ...[
+                      const Row(
+                        children: [
+                          Icon(Icons.info_outline, color: Colors.orange),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'No trip saved yet.',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
 
-                    const SizedBox(height: 8),
+                      const SizedBox(height: 12),
 
-                    Text('Route $routeNumber'),
+                      Text(
+                        '$fromLocation → $toLocation',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
 
-                    const SizedBox(height: 6),
+                      const SizedBox(height: 8),
 
-                    Text('Date: ${_formatDate(selectedDate)}'),
+                      Text('Route $routeNumber'),
 
-                    const SizedBox(height: 6),
+                      const SizedBox(height: 6),
 
-                    Text('Time: ${selectedTime.format(context)}'),
+                      Text('Date: ${_formatDate(selectedDate)}'),
+
+                      const SizedBox(height: 6),
+
+                      Text(
+                        'Time: '
+                        '${selectedTime.format(context)}',
+                      ),
+                    ] else ...[
+                      Text(
+                        '$fromLocation → $toLocation',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+
+                      const SizedBox(height: 8),
+
+                      Text('Route $routeNumber'),
+
+                      const SizedBox(height: 6),
+
+                      Text(
+                        'Date: '
+                        '${_formatDate(selectedDate)}',
+                      ),
+
+                      const SizedBox(height: 6),
+
+                      Text(
+                        'Time: '
+                        '${selectedTime.format(context)}',
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -956,12 +1137,16 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
                       ? Icons.location_on
                       : tripStatus == 'Completed'
                       ? Icons.check_circle
-                      : Icons.schedule,
+                      : tripStatus == 'Scheduled'
+                      ? Icons.schedule
+                      : Icons.info_outline,
                   color: tripStatus == 'Live'
                       ? Colors.green
                       : tripStatus == 'Completed'
                       ? Colors.grey
-                      : Colors.orange,
+                      : tripStatus == 'Scheduled'
+                      ? Colors.orange
+                      : Colors.blueGrey,
                 ),
                 title: const Text(
                   'Trip Status',
@@ -1126,6 +1311,28 @@ class _DriverTripControlScreenState extends State<DriverTripControlScreen> {
                   ),
                 ),
               ),
+
+            const SizedBox(height: 30),
+
+            // ====================================================
+            // LOGOUT BUTTON
+            // ====================================================
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: OutlinedButton.icon(
+                onPressed: _logout,
+                icon: const Icon(Icons.logout),
+                label: const Text(
+                  'LOGOUT',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.red,
+                  side: const BorderSide(color: Colors.red),
+                ),
+              ),
+            ),
           ],
         ),
       ),

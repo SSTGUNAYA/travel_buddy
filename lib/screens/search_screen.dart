@@ -231,6 +231,15 @@ class _SearchScreenState extends State<SearchScreen> {
 
                                 const SizedBox(height: 4),
 
+                                Text(
+                                  'Category: ${trip.busCategory}',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+
+                                const SizedBox(height: 4),
+
                                 Text('${trip.from} → ${trip.to}'),
 
                                 const SizedBox(height: 4),

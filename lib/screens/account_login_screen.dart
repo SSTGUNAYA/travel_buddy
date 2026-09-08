@@ -1,17 +1,17 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-import '../data/driver_session.dart';
-import 'driver_trip_control_screen.dart';
+import '../data/account_session.dart';
+import 'account_details_screen.dart';
 
-class DriverLoginScreen extends StatefulWidget {
-  const DriverLoginScreen({super.key});
+class AccountLoginScreen extends StatefulWidget {
+  const AccountLoginScreen({super.key});
 
   @override
-  State<DriverLoginScreen> createState() => _DriverLoginScreenState();
+  State<AccountLoginScreen> createState() => _AccountLoginScreenState();
 }
 
-class _DriverLoginScreenState extends State<DriverLoginScreen> {
+class _AccountLoginScreenState extends State<AccountLoginScreen> {
   final busNumberController = TextEditingController();
   final passwordController = TextEditingController();
 
@@ -20,7 +20,7 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
   bool isLoggingIn = false;
   bool hidePassword = true;
 
-  Future<void> loginDriver() async {
+  Future<void> loginAccount() async {
     final busNumber = busNumberController.text.trim().toUpperCase();
     final password = passwordController.text;
 
@@ -59,21 +59,21 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
       );
 
       // --------------------------------------------------------
-      // 4. DRIVER SESSION ONLY
+      // 4. ACCOUNT SESSION
       // --------------------------------------------------------
 
-      DriverSession.login(busNumber);
+      AccountSession.login(busNumber);
 
       if (!mounted) return;
 
       // --------------------------------------------------------
-      // 5. OPEN DRIVER TRIP CONTROL
+      // 5. OPEN ACCOUNT DETAILS
       // --------------------------------------------------------
 
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (context) => DriverTripControlScreen(busNumber: busNumber),
+          builder: (context) => AccountDetailsScreen(busNumber: busNumber),
         ),
       );
     } on FirebaseAuthException catch (e) {
@@ -120,7 +120,7 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Driver Login'),
+        title: const Text('Account Login'),
         centerTitle: true,
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
@@ -131,18 +131,25 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
 
         child: Column(
           children: [
-            const SizedBox(height: 30),
+            const SizedBox(height: 35),
 
-            const Icon(Icons.drive_eta, size: 80, color: Colors.blue),
+            const Icon(Icons.account_circle, size: 90, color: Colors.blue),
 
             const SizedBox(height: 20),
 
             const Text(
-              'Driver Login',
+              'Account Login',
               style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
             ),
 
-            const SizedBox(height: 30),
+            const SizedBox(height: 10),
+
+            const Text(
+              'Manage your bus account',
+              style: TextStyle(fontSize: 15, color: Colors.grey),
+            ),
+
+            const SizedBox(height: 35),
 
             // --------------------------------------------------
             // BUS NUMBER
@@ -158,7 +165,7 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
               ),
             ),
 
-            const SizedBox(height: 15),
+            const SizedBox(height: 18),
 
             // --------------------------------------------------
             // PASSWORD
@@ -167,7 +174,7 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
               controller: passwordController,
               obscureText: hidePassword,
               decoration: InputDecoration(
-                labelText: 'Driver Password',
+                labelText: 'Account Password',
                 prefixIcon: const Icon(Icons.lock),
                 border: const OutlineInputBorder(),
 
@@ -194,7 +201,7 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
               height: 52,
 
               child: ElevatedButton.icon(
-                onPressed: isLoggingIn ? null : loginDriver,
+                onPressed: isLoggingIn ? null : loginAccount,
 
                 icon: isLoggingIn
                     ? const SizedBox(
@@ -205,7 +212,7 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                     : const Icon(Icons.login),
 
                 label: Text(
-                  isLoggingIn ? 'Logging in...' : 'Driver Login',
+                  isLoggingIn ? 'Logging in...' : 'Account Login',
 
                   style: const TextStyle(fontSize: 17),
                 ),

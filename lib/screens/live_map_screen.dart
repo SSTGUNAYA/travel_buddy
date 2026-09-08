@@ -186,6 +186,12 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text('Route ${currentTrip!.routeNo}'),
+                          const SizedBox(height: 4),
+
+                          Text(
+                            'Category: ${currentTrip!.busCategory}',
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
                           const SizedBox(height: 8),
                           Text(
                             '${currentTrip!.from} -> ${currentTrip!.to}',

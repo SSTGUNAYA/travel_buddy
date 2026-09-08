@@ -314,25 +314,6 @@ class _BusTimetableScreenState extends State<BusTimetableScreen> {
 
                               const SizedBox(height: 15),
 
-                              // DEPARTURE TIME
-                              Row(
-                                children: [
-                                  const Icon(Icons.access_time),
-
-                                  const SizedBox(width: 8),
-
-                                  Text(
-                                    trip.departureTime,
-                                    style: const TextStyle(
-                                      fontSize: 17,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ),
-
-                              const SizedBox(height: 8),
-
                               // BUS NUMBER
                               Row(
                                 children: [
@@ -340,12 +321,42 @@ class _BusTimetableScreenState extends State<BusTimetableScreen> {
 
                                   const SizedBox(width: 8),
 
-                                  Text(trip.busNumber),
+                                  Expanded(
+                                    child: Text(
+                                      trip.busNumber,
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
                                 ],
                               ),
 
                               const SizedBox(height: 8),
 
+                              // BUS CATEGORY
+                              Row(
+                                children: [
+                                  const Icon(Icons.category),
+
+                                  const SizedBox(width: 8),
+
+                                  Expanded(
+                                    child: Text(
+                                      trip.busCategory.isEmpty
+                                          ? 'Category: Not specified'
+                                          : 'Category: ${trip.busCategory}',
+                                      style: const TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+
+                              const SizedBox(height: 8),
                               // STATUS
                               Row(
                                 children: [

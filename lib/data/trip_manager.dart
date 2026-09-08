@@ -101,4 +101,11 @@ class TripManager {
   static List<BusTrip> getTripsByDirection(String from, String to) {
     return trips.where((trip) => trip.from == from && trip.to == to).toList();
   }
+
+  // ------------------------------------------------------------
+  // DELETE ALL TRIPS BY BUS NUMBER
+  // ------------------------------------------------------------
+  static void deleteTripsByBusNumber(String busNumber) {
+    trips.removeWhere((trip) => trip.busNumber == busNumber);
+  }
 }

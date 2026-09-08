@@ -2,6 +2,7 @@ class BusTrip {
   final String routeNo;
   final String tripId;
   final String busNumber;
+  final String busCategory;
   final String from;
   final String to;
   final List<String> stops;
@@ -18,6 +19,7 @@ class BusTrip {
     required this.tripId,
     required this.routeNo,
     required this.busNumber,
+    required this.busCategory,
     required this.from,
     required this.to,
     required this.stops,

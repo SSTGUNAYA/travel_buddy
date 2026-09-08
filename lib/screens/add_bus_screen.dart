@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'account_login_screen.dart';
 
 class AddBusScreen extends StatefulWidget {
   const AddBusScreen({super.key});
@@ -17,8 +19,20 @@ class _AddBusScreenState extends State<AddBusScreen> {
 
   bool isSaving = false;
   bool hideDriverPassword = true;
+  String? selectedBusCategory;
+
+  final List<String> busCategories = [
+    'CTB Normal',
+    'CTB AC',
+    'CTB Highway',
+    'Private Normal',
+    'Private Semi',
+    'Private AC',
+    'Private Highway',
+  ];
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
   Future<void> saveBus() async {
     final busNumber = busNumberController.text.trim().toUpperCase();
@@ -26,6 +40,7 @@ class _AddBusScreenState extends State<AddBusScreen> {
     final from = fromController.text.trim();
     final to = toController.text.trim();
     final driverPassword = driverPasswordController.text;
+    final busCategory = selectedBusCategory!;
 
     // ----------------------------------------------------------
     // VALIDATION
@@ -39,6 +54,16 @@ class _AddBusScreenState extends State<AddBusScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please fill all fields'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (selectedBusCategory == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select a Bus Category'),
           backgroundColor: Colors.red,
         ),
       );
@@ -59,18 +84,20 @@ class _AddBusScreenState extends State<AddBusScreen> {
       isSaving = true;
     });
 
+    UserCredential? credential;
+
     try {
-      // --------------------------------------------------------
-      // BUS NUMBER AS UNIQUE DOCUMENT ID
-      // --------------------------------------------------------
+      // ----------------------------------------------------------
+      // BUS ID
+      // ----------------------------------------------------------
 
       final busId = busNumber.replaceAll(RegExp(r'[^A-Z0-9]+'), '_');
 
       final busRef = _firestore.collection('buses').doc(busId);
 
-      // --------------------------------------------------------
-      // CHECK DUPLICATE BUS NUMBER
-      // --------------------------------------------------------
+      // ----------------------------------------------------------
+      // 1. CHECK DUPLICATE BUS NUMBER FIRST
+      // ----------------------------------------------------------
 
       final existingBus = await busRef.get();
 
@@ -87,21 +114,48 @@ class _AddBusScreenState extends State<AddBusScreen> {
         return;
       }
 
-      // --------------------------------------------------------
-      // SAVE BUS
-      // --------------------------------------------------------
+      // ----------------------------------------------------------
+      // 2. CREATE FIREBASE AUTH ACCOUNT
+      // ----------------------------------------------------------
+
+      final authEmail = '$busNumber@travelbuddy.app';
+
+      credential = await _auth.createUserWithEmailAndPassword(
+        email: authEmail,
+        password: driverPassword,
+      );
+
+      final user = credential.user;
+
+      if (user == null) {
+        throw Exception('Firebase account could not be created.');
+      }
+
+      final uid = user.uid;
+
+      // ----------------------------------------------------------
+      // 3. SAVE BUS DATA TO FIRESTORE
+      // ----------------------------------------------------------
 
       await busRef.set({
         'busId': busId,
         'busNumber': busNumber,
+        'busCategory': busCategory,
         'routeNumber': routeNumber,
         'from': from,
         'to': to,
         'driverUsername': busNumber,
         'driverPassword': driverPassword,
+        'ownerUid': uid,
         'status': 'inactive',
         'createdAt': FieldValue.serverTimestamp(),
       });
+
+      // ----------------------------------------------------------
+      // 4. SIGN OUT AFTER REGISTRATION
+      // ----------------------------------------------------------
+
+      await _auth.signOut();
 
       if (!mounted) return;
 
@@ -112,17 +166,61 @@ class _AddBusScreenState extends State<AddBusScreen> {
         ),
       );
 
+      // ----------------------------------------------------------
+      // 5. RETURN TO BUS REGISTER PAGE
+      // ----------------------------------------------------------
+
       Navigator.pop(context);
+    } on FirebaseAuthException catch (e) {
+      // ----------------------------------------------------------
+      // AUTH ERROR
+      // ----------------------------------------------------------
+
+      if (mounted) {
+        String message;
+
+        if (e.code == 'email-already-in-use') {
+          message = 'This bus account already exists.';
+        } else if (e.code == 'weak-password') {
+          message = 'Password is too weak.';
+        } else if (e.code == 'invalid-email') {
+          message = 'Invalid bus account information.';
+        } else {
+          message = 'Account creation failed: ${e.message ?? e.code}';
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message), backgroundColor: Colors.red),
+        );
+      }
     } on FirebaseException catch (e) {
+      // ----------------------------------------------------------
+      // FIRESTORE ERROR
+      // ----------------------------------------------------------
+
+      // If Firestore save failed after Auth account creation,
+      // remove the newly created Auth account.
+      try {
+        await credential?.user?.delete();
+      } catch (_) {}
+
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to save bus: ${e.message ?? e.code}'),
+          content: Text('Failed to save bus account: ${e.message ?? e.code}'),
           backgroundColor: Colors.red,
         ),
       );
     } catch (e) {
+      // ----------------------------------------------------------
+      // OTHER ERROR
+      // ----------------------------------------------------------
+
+      try {
+        await credential?.user?.delete();
+      } catch (_) {}
+
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -155,6 +253,32 @@ class _AddBusScreenState extends State<AddBusScreen> {
         title: const Text('Bus Register'),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
+        actions: [
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              if (value == 'account_login') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const AccountLoginScreen(),
+                  ),
+                );
+              }
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem<String>(
+                value: 'account_login',
+                child: Row(
+                  children: [
+                    Icon(Icons.account_circle),
+                    SizedBox(width: 10),
+                    Text('Account Login'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -196,6 +320,29 @@ class _AddBusScreenState extends State<AddBusScreen> {
 
             const SizedBox(height: 15),
 
+            DropdownButtonFormField<String>(
+              initialValue: selectedBusCategory,
+              decoration: const InputDecoration(
+                labelText: 'Bus Category',
+                prefixIcon: Icon(Icons.category),
+                border: OutlineInputBorder(),
+              ),
+              hint: const Text('Select Bus Category'),
+              items: busCategories.map((category) {
+                return DropdownMenuItem<String>(
+                  value: category,
+                  child: Text(category),
+                );
+              }).toList(),
+              onChanged: (value) {
+                setState(() {
+                  selectedBusCategory = value;
+                });
+              },
+            ),
+
+            const SizedBox(height: 15),
+
             TextField(
               controller: fromController,
               decoration: const InputDecoration(
@@ -204,7 +351,6 @@ class _AddBusScreenState extends State<AddBusScreen> {
                 border: OutlineInputBorder(),
               ),
             ),
-
             const SizedBox(height: 15),
 
             TextField(
